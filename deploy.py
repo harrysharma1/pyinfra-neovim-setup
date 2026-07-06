@@ -1,7 +1,7 @@
 from pyinfra.context import host
 from pyinfra.facts.files import Directory
-from pyinfra.facts.server import Home
-from pyinfra.operations import apt, files, server
+from pyinfra.facts.server import Home, User
+from pyinfra.operations import apt, files, server, git
 
 NEOVIM_VERSION = "v0.12.4"
 NEOVIM_URL = f"https://github.com/neovim/neovim/releases/download/{NEOVIM_VERSION}/nvim-linux-x86_64.tar.gz"
@@ -9,7 +9,7 @@ NEOVIM_SHA256SUM = "012bf3fcac5ade43914df3f174668bf64d05e049a4f032a388c027b1ebd7
 
 
 apt.packages(
-        packages = ["vim", "curl", "ripgrep", "unzip"],
+        packages = ["vim", "curl", "ripgrep", "unzip", "git"],
         update = True,
 )
 
@@ -31,13 +31,33 @@ if not nvim_opt_exists:
     )
 
 
-shell_home = host.get_fact(Home, _sudo = False)
+home = host.get_fact(Home, _sudo = False)
+user = host.get_fact(User, _sudo = False)
+
+server.shell(
+    name = "Fix ownership of any prior broken user configs from root deployments",
+    commands = [
+        f"chown {user}:{user} {home}/.bashrc 2>/dev/null || true",
+        f"chown -R {user}:{user} {home}/.config/nvim 2>/dev/null || true"
+    ]
+)
 
 files.line(
     name = "Writing the nvim binary to path",
-    path = f"{shell_home}/.bashrc",
+    path = f"{home}/.bashrc",
     line = 'export PATH="$PATH:/opt/nvim-linux-x86_64/bin"',
-    present = True
+    present = True,
+    _sudo = False
 )
 
+files.directory(
+    name = "Ensure ~/.config file exists",
+    path = f"{home}/.config/nvim",
+    _sudo = False
+)
 
+git.repo(
+    src = "https://github.com/NvChad/starter",
+    dest = f"{home}/.config/nvim",
+    _sudo = False
+)
